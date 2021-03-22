@@ -55,13 +55,13 @@ Eigen::Matrix3d getJacoright(double th,Eigen::Vector3d& a){
 int main(int argc,char** argv)
 { 
   //make a standard groundtruth file from a original one
-  string str_old_truth,strtmp;
+  string str_old_truth,strtmp, path_old_truth;
   struct tm tmtmp;
   int ntmp;
   double dtimetmp,x,y,z,qx,qy,qz,qw,arrq[4];
   vector<double> reversedtmp;
   if (argc<2){
-    cout<<"usage: ./test (directory of zzh's dataset)"<<endl;
+    cout<<"usage: ./test (directory of zzh's dataset) (2:EuRoC 3:leica/vicon / 2:TUM / 2:TUM2D / 2:zzh's dataset oldtruth.txt name, e.g. oldtruth4.txt)"<<endl;
     
     cout<<"Calculate Stereo's rectified Rc'cl(R1),Rc'cr(R2),Pclc'(P1),Pcrc'(P2) & Tbc(Tbc') used by VIO:"<<endl;
     cv::Mat Tbc1(4,4,CV_64F),Tbc2(4,4,CV_64F);
@@ -100,7 +100,7 @@ int main(int argc,char** argv)
     cout<<"Tbc:"<<endl;
     cv::Mat T1l=cv::Mat::eye(4,4,CV_64F);//Tl1.t() or Tc'c0.t()
     T1l.rowRange(0,3).colRange(0,3)=R1.t();//R1l=Rl1.t()
-    T1l.rowRange(0,3).col(3)=P1.rowRange(0,3).col(3)/P1.at<double>(0,0);//t1l=-R1l*tl1 or just use t1l*f/f or 0
+    T1l.rowRange(0,3).col(3)=-R1.t() * P1.rowRange(0,3).col(3)/P1.at<double>(0,0);//t1l=-R1l1*tl1_1*f/f or use t1l1*f/f or 0
 //     cout<<T1l<<endl;
     cv::Mat Tbl=Tbc1*T1l;//Tbc'=Tbc0*Tc'c0.t()
     cout<<Tbl<<endl;
@@ -111,6 +111,7 @@ int main(int argc,char** argv)
     check_directory(str_old_truth);
     cout<<"rectified directory name: "<<str_old_truth<<endl;
   }
+  path_old_truth = str_old_truth + "oldtruth4.txt";
   //test the length of the TUM dataset && we cannot estimate the trajectory from the 3 kinds of acceleration and we need the angle at least!
   if (argc>=3){
     if ((string(argv[2])=="TUM"||string(argv[2])=="TUM2D")){
@@ -135,8 +136,8 @@ int main(int argc,char** argv)
       int arrtmp[6];
       double total_length=0;
       if (!fin_old_truth.is_open()){
-	cout<<"open oldtruth_estimate0 wrong!!!"<<endl;
-	return -1;
+        cout<<"open oldtruth_estimate0 wrong!!!"<<endl;
+        return -1;
       }
       getline(fin_old_truth,strtmp);//pass the 1st unused line #...
       fout_truth.open(str_old_truth+"/groundtruth_estimate0.txt",ios_base::out);
@@ -145,36 +146,36 @@ int main(int argc,char** argv)
       int NUM_PER_LINE=17;//total 1+3+4+3*3 numbers per line
       int NUM_Q_OVER=8;//1+3+4
       while (!fin_old_truth.eof()){
-	fin_old_truth>>strtmp;
-	ntmp=strtmp.length();
-	//if (strtmp[0]=='T') break;
-	int posLast=0;double qwTmp;
-	double len2=0;static double xyzLast[3],lineNum=0;
-	for (int i=0;i<NUM_PER_LINE;++i){
-	  int pos=strtmp.find(',',posLast);
-	  string::size_type posNum;if (pos!=string::npos) posNum=pos-posLast;else posNum=string::npos;
-	  double dtmp=atof(strtmp.substr(posLast,posNum).c_str());
-	  if (i==4)
-	    qwTmp=dtmp;
-	  else{
-	    if (i==0) fout_truth<<setprecision(9)<<dtmp/1e9;
-	    else fout_truth<<setprecision(6)<<dtmp;//input time,x,y,z,qw,qx,qy,qz but we want output as time,x,y,z,qx,qy,qz,qw
-	    if (i==NUM_PER_LINE-1) fout_truth<<endl;
-	    else{
-	      fout_truth<<" ";
-	      if (i==NUM_Q_OVER-1) fout_truth<<qwTmp<<" ";
-	    }
-	    if (lineNum==0){
-	      xyzLast[i-1]=dtmp;
-	    }else if (i>0&&i<4){//x,y,z
-	      double del=dtmp-xyzLast[i-1];
-	      len2+=del*del;//delx^2+dely^2+delz^2
-	      xyzLast[i-1]=dtmp;
-	    }
-	  }
-	  posLast=pos+1;
-	}
-	total_length+=sqrt(len2);++lineNum;
+        fin_old_truth>>strtmp;
+        ntmp=strtmp.length();
+        //if (strtmp[0]=='T') break;
+        int posLast=0;double qwTmp;
+        double len2=0;static double xyzLast[3],lineNum=0;
+        for (int i=0;i<NUM_PER_LINE;++i){
+          int pos=strtmp.find(',',posLast);
+          string::size_type posNum;if (pos!=string::npos) posNum=pos-posLast;else posNum=string::npos;
+          double dtmp=atof(strtmp.substr(posLast,posNum).c_str());
+          if (i==4)
+            qwTmp=dtmp;
+          else{
+            if (i==0) fout_truth<<setprecision(9)<<dtmp/1e9;
+            else fout_truth<<setprecision(6)<<dtmp;//input time,x,y,z,qw,qx,qy,qz but we want output as time,x,y,z,qx,qy,qz,qw
+            if (i==NUM_PER_LINE-1) fout_truth<<endl;
+            else{
+              fout_truth<<" ";
+              if (i==NUM_Q_OVER-1) fout_truth<<qwTmp<<" ";
+            }
+            if (lineNum==0){
+              xyzLast[i-1]=dtmp;
+            }else if (i>0&&i<4){//x,y,z
+              double del=dtmp-xyzLast[i-1];
+              len2+=del*del;//delx^2+dely^2+delz^2
+              xyzLast[i-1]=dtmp;
+            }
+          }
+          posLast=pos+1;
+        }
+        total_length+=sqrt(len2);++lineNum;
       }
       fin_old_truth.close();
       fout_truth.close();
@@ -185,8 +186,8 @@ int main(int argc,char** argv)
       fin_old_truth.open(str_old_truth+"/mav0/"+truthmethod+"/data.csv",ios_base::in);
       total_length=0;
       if (!fin_old_truth.is_open()){
-	cout<<"open oldtruth wrong!!!"<<endl;
-	return -1;
+        cout<<"open oldtruth wrong!!!"<<endl;
+        return -1;
       }
       getline(fin_old_truth,strtmp);//pass the 1st unused line #...
       fout_truth.open(str_old_truth+"/groundtruth_"+truthmethod+".txt",ios_base::out);
@@ -194,36 +195,36 @@ int main(int argc,char** argv)
       fout_truth<<fixed;
       NUM_PER_LINE=8;//total 1+3+4 numbers per line
       while (!fin_old_truth.eof()){
-	fin_old_truth>>strtmp;
-	ntmp=strtmp.length();
-	//if (strtmp[0]=='T') break;
-	int posLast=0;double qwTmp;
-	double len2=0;static double xyzLast[3],lineNum=0;
-	for (int i=0;i<NUM_PER_LINE;++i){
-	  int pos=strtmp.find(',',posLast);
-	  string::size_type posNum;if (pos!=string::npos) posNum=pos-posLast;else posNum=string::npos;
-	  double dtmp=atof(strtmp.substr(posLast,posNum).c_str());
-	  if (i==4)
-	    qwTmp=dtmp;
-	  else{
-	    if (i==0) fout_truth<<setprecision(9)<<dtmp/1e9<<" ";
-	    else fout_truth<<setprecision(17)<<dtmp<<" ";//input time,x,y,z,qw,qx,qy,qz but we want output as time,x,y,z,qx,qy,qz,qw
-	    if (i==NUM_PER_LINE-1) fout_truth<<qwTmp<<endl;
-	    if (lineNum==0){
-	      xyzLast[i-1]=dtmp;
-	    }else if (i>0&&i<4){//x,y,z
-	      double del=dtmp-xyzLast[i-1];
-	      len2+=del*del;//delx^2+dely^2+delz^2
-	      xyzLast[i-1]=dtmp;
-	    }
-	  }
-	  posLast=pos+1;
-	  if (truthmethod=="leica0"&&i==3){//for leica0
- 	    fout_truth<<"0 0 0 1"<<endl;
- 	    break;
- 	  }
-	}
-	total_length+=sqrt(len2);++lineNum;
+        fin_old_truth>>strtmp;
+        ntmp=strtmp.length();
+        //if (strtmp[0]=='T') break;
+        int posLast=0;double qwTmp;
+        double len2=0;static double xyzLast[3],lineNum=0;
+        for (int i=0;i<NUM_PER_LINE;++i){
+          int pos=strtmp.find(',',posLast);
+          string::size_type posNum;if (pos!=string::npos) posNum=pos-posLast;else posNum=string::npos;
+          double dtmp=atof(strtmp.substr(posLast,posNum).c_str());
+          if (i==4)
+            qwTmp=dtmp;
+          else{
+            if (i==0) fout_truth<<setprecision(9)<<dtmp/1e9<<" ";
+            else fout_truth<<setprecision(17)<<dtmp<<" ";//input time,x,y,z,qw,qx,qy,qz but we want output as time,x,y,z,qx,qy,qz,qw
+            if (i==NUM_PER_LINE-1) fout_truth<<qwTmp<<endl;
+            if (lineNum==0){
+              xyzLast[i-1]=dtmp;
+            }else if (i>0&&i<4){//x,y,z
+              double del=dtmp-xyzLast[i-1];
+              len2+=del*del;//delx^2+dely^2+delz^2
+              xyzLast[i-1]=dtmp;
+            }
+          }
+          posLast=pos+1;
+          if (truthmethod=="leica0"&&i==3){//for leica0
+            fout_truth<<"0 0 0 1"<<endl;
+            break;
+          }
+        }
+        total_length+=sqrt(len2);++lineNum;
       }
       fin_old_truth.close();
       fout_truth.close();
@@ -234,36 +235,37 @@ int main(int argc,char** argv)
       fout_truth.open(str_old_truth+"/groundtruth.txt",ios_base::out);
       double dtmp;
       Eigen::Isometry3d Tpb;
+      cout<<str_old_truth+"/mav0/"+truthmethod+"/sensor.yaml"<<endl;
       cv::FileStorage fsSettings(str_old_truth+"/mav0/"+truthmethod+"/sensor.yaml",cv::FileStorage::READ);
       if (!fsSettings.isOpened()) cout<<"Wrong in openning"<<truthmethod<<"/sensor.yaml!!!"<<endl;
       cv::FileNode fnT=fsSettings["T_BS"];
       if (fnT.empty()) cout<<"Empty Node!"<<endl;
       else{
-	for (int i=0;i<4;++i)
-	  for (int j=0;j<4;++j)
-	    Tpb.matrix()(i,j)=fnT["data"][i*4+j];
-	//cout<<Tbc.matrix()<<endl;
+        for (int i=0;i<4;++i)
+          for (int j=0;j<4;++j)
+            Tpb.matrix()(i,j)=fnT["data"][i*4+j];
+        //cout<<Tbc.matrix()<<endl;
       }
       Tpb=Tpb.inverse();
       getline(fin_old_truth,strtmp);//pass 3 unused lines #...
       getline(fin_old_truth,strtmp);getline(fin_old_truth,strtmp);
       while (!fin_old_truth.eof()){
-	fin_old_truth>>dtmp;
-	fout_truth<<setprecision(6)<<dtmp<<" ";
-	double x,y,z,qx,qy,qz,qw;
-	fin_old_truth>>x>>y>>z>>qx>>qy>>qz>>qw;
-	Eigen::Quaterniond q(qw,qx,qy,qz);
-	Eigen::Vector3d t(x,y,z);
-	Eigen::Isometry3d Twp(q);
-	Twp.matrix().block<3,1>(0,3)=t;
-	Eigen::Isometry3d Twb;
-	Twb=Twp*Tpb;
-	//cout<<Tbp.matrix()<<endl;
-	Eigen::Quaterniond qout(Twb.rotation());
-	if (qout.w()<0) qout.coeffs()*=-1;
-	fout_truth<<setprecision(7)<<Twb(0,3)<<" "<<Twb(1,3)<<" "<<Twb(2,3);
-	if (truthmethod=="leica0") fout_truth<<" 0 0 0 1"<<endl;
-	else fout_truth<<" "<<qout.x()<<" "<<qout.y()<<" "<<qout.z()<<" "<<qout.w()<<endl;
+        fin_old_truth>>dtmp;
+        fout_truth<<setprecision(6)<<dtmp<<" ";
+        double x,y,z,qx,qy,qz,qw;
+        fin_old_truth>>x>>y>>z>>qx>>qy>>qz>>qw;
+        Eigen::Quaterniond q(qw,qx,qy,qz);
+        Eigen::Vector3d t(x,y,z);
+        Eigen::Isometry3d Twp(q);
+        Twp.matrix().block<3,1>(0,3)=t;
+        Eigen::Isometry3d Twb;
+        Twb=Twp*Tpb;
+        //cout<<Tbp.matrix()<<endl;
+        Eigen::Quaterniond qout(Twb.rotation());
+        if (qout.w()<0) qout.coeffs()*=-1;
+        fout_truth<<setprecision(7)<<Twb(0,3)<<" "<<Twb(1,3)<<" "<<Twb(2,3);
+        if (truthmethod=="leica0") fout_truth<<" 0 0 0 1"<<endl;
+        else fout_truth<<" "<<qout.x()<<" "<<qout.y()<<" "<<qout.z()<<" "<<qout.w()<<endl;
       }
       fin_old_truth.close();
       fout_truth.close();
@@ -275,43 +277,47 @@ int main(int argc,char** argv)
       fnT=fsSettings["T_BS"];
       if (fnT.empty()) cout<<"Empty Node!"<<endl;
       else{
-	for (int i=0;i<4;++i)
-	  for (int j=0;j<4;++j)
-	    Tcb.matrix()(i,j)=fnT["data"][i*4+j];
+        for (int i=0;i<4;++i)
+          for (int j=0;j<4;++j)
+            Tcb.matrix()(i,j)=fnT["data"][i*4+j];
       }
       Tcb=Tcb.inverse();
       ifstream fin_traj(str_old_truth+"/orbslam2/KeyFrameTrajectory.txt",ios_base::in);
       if (fin_traj.is_open()){
-	ofstream fout_traj(str_old_truth+"/orbslam2/KeyFrameTrajectoryIMU.txt",ios_base::out);
-	fout_traj<<fixed;
-	while (!fin_traj.eof()){
-	  fin_traj>>dtmp;
-	  fout_traj<<setprecision(6)<<dtmp<<" ";
-	  double x,y,z,qx,qy,qz,qw;
-	  fin_traj>>x>>y>>z>>qx>>qy>>qz>>qw;
-	  getline(fin_traj,strtmp);//maybe recording pseudo velocity&bg,ba
-	  Eigen::Quaterniond q(qw,qx,qy,qz);
-	  Eigen::Vector3d t(x,y,z);
-	  Eigen::Isometry3d Twc(q);
-	  Twc.matrix().block<3,1>(0,3)=t;
-	  Eigen::Isometry3d Twb;
-	  Twb=Twc*Tcb;
-	  //cout<<Tbp.matrix()<<endl;
-	  Eigen::Quaterniond qout(Twb.rotation());
-	  if (qout.w()<0) qout.coeffs()*=-1;
-	  fout_traj<<setprecision(7)<<Twb(0,3)<<" "<<Twb(1,3)<<" "<<Twb(2,3)
-	  <<" "<<qout.x()<<" "<<qout.y()<<" "<<qout.z()<<" "<<qout.w()
-	  <<endl;
-	}
-	fin_traj.close();
-	fout_traj.close();
-	cout<<"New KFTrajectoryIMU made from KFTrajectory of camera!"<<endl;
+        ofstream fout_traj(str_old_truth+"/orbslam2/KeyFrameTrajectoryIMU.txt",ios_base::out);
+        fout_traj<<fixed;
+        while (!fin_traj.eof()){
+          fin_traj>>dtmp;
+//          fout_traj<<setprecision(6)<<dtmp<<" ";
+          fout_traj<<setprecision(6)<<dtmp/1e9<<" ";//for ORB_SLAM3
+          double x,y,z,qx,qy,qz,qw;
+          fin_traj>>x>>y>>z>>qx>>qy>>qz>>qw;
+          getline(fin_traj,strtmp);//maybe recording pseudo velocity&bg,ba
+          Eigen::Quaterniond q(qw,qx,qy,qz);
+          Eigen::Vector3d t(x,y,z);
+          Eigen::Isometry3d Twc(q);
+          Twc.matrix().block<3,1>(0,3)=t;
+          Eigen::Isometry3d Twb;
+//          Twb=Twc*Tcb;
+          Twb=Twc;
+          //cout<<Tbp.matrix()<<endl;
+          Eigen::Quaterniond qout(Twb.rotation());
+          if (qout.w()<0) qout.coeffs()*=-1;
+          fout_traj<<setprecision(7)<<Twb(0,3)<<" "<<Twb(1,3)<<" "<<Twb(2,3)
+          <<" "<<qout.x()<<" "<<qout.y()<<" "<<qout.z()<<" "<<qout.w()
+          <<endl;
+        }
+        fin_traj.close();
+        fout_traj.close();
+        cout<<"New KFTrajectoryIMU made from KFTrajectory of camera!"<<endl;
       }
       
       return 0;
+    }else {
+        path_old_truth = str_old_truth + argv[2];
     }
   }
-  ifstream fin_old_truth(str_old_truth+"oldtruth4.txt",ios_base::in);//oldtruth42
+  ifstream fin_old_truth(path_old_truth, ios_base::in);
   ofstream fout_truth;
   int arrtmp[6];
   double total_length=0;
@@ -331,7 +337,7 @@ int main(int argc,char** argv)
     if (strtmp[0]=='T') break;
     strtmp=strtmp.substr(4);//delete 0471
     sscanf(strtmp.substr(0,12).c_str(),"%02d%02d%02d%02d%02d%02d",arrtmp,arrtmp+1,arrtmp+2,arrtmp+3,arrtmp+4,arrtmp+5);
-    tmtmp.tm_mon=arrtmp[0]-1;tmtmp.tm_mday=arrtmp[1]+1;tmtmp.tm_hour=arrtmp[2];tmtmp.tm_min=arrtmp[3];tmtmp.tm_sec=arrtmp[4];//+1 day
+    tmtmp.tm_mon=arrtmp[0]-1;tmtmp.tm_mday=arrtmp[1]+1;tmtmp.tm_hour=arrtmp[2]-1;tmtmp.tm_min=arrtmp[3];tmtmp.tm_sec=arrtmp[4];//+1 day
     dtimetmp=mktime(&tmtmp)+4+arrtmp[5]/100.0;//42(for old VI dataset)
     //cout<<dtimetmp<<" "<<endl;
     strtmp=strtmp.substr(13);
@@ -414,15 +420,15 @@ labeljump1:
       double dely_tmp=Twcr(1,3)-yold;
       double delz_tmp=Twcr(2,3)-zold;
       if (atof(strtmp.c_str())-told<2){
-	total_length+=sqrt(delx_tmp*delx_tmp+dely_tmp*dely_tmp+delz_tmp*delz_tmp);
-	time_ratio+=atof(strtmp.c_str())-told;
+        total_length+=sqrt(delx_tmp*delx_tmp+dely_tmp*dely_tmp+delz_tmp*delz_tmp);
+        time_ratio+=atof(strtmp.c_str())-told;
       }
     }
     xold=Twcr(0,3);yold=Twcr(1,3);zold=Twcr(2,3);told=atof(strtmp.c_str());
   }
   fin_oldtraj.close();
   fout_traj.close();
-  cout<<"new trajectory of the crystal is made! estimated length = "<<total_length<<"; time_ratio="<<time_ratio/(maxTime-minTime)<<endl;
+  cout<<"new trajectory of the crystal is made! estimated length = "<<total_length<<"; time_ratio="<<time_ratio/(maxTime-minTime)<<", max_time="<<(maxTime-minTime)<<endl;
   //make a new estimated trajectory of the crystal from the one of the monocular camera
   fin_oldtraj.open(str_old_truth+"/orbslam2/Monocular/KeyFrameTrajectory.txt");
   fout_traj.open(str_old_truth+"orbslam2/Monocular/CrystalTrajectory.txt");
@@ -462,7 +468,7 @@ labeljump2:
   //calculate the pose from the encoder/hall sensor data
   //this world frame is rotaionally different from the one before,but still called the cr frame at the time 0
 //#define estimate_mode 0//0 means Complementary Filter(for old VI), 1 means KF, 2means only encoder(for VIE dataset)
-#define estimate_mode 2
+  int estimate_mode=2;
   const int ppr=400,datatime=10;//pulse per revolution,the span of the hall sensor data
   const double wheelradius=0.105,carradius=0.280,vscaleforhall=1.649336143e-4;//2.0/ppr*M_PI*wheelradius/datatime;//radius for the driving wheels(m),the half distance between two driving wheels
   const double wscaleforhall=vscaleforhall/carradius;
@@ -471,10 +477,11 @@ labeljump2:
   double v[2],xt[3]={0,0,0},vtmp=0,wtmp=0,lasttime=-1;//v[0] is vl or left wheel velocity
   //xt is the pose of the centre of two driving wheels
   ifstream fin_odom;
-  if (estimate_mode!=2)
+  fin_odom.open(str_old_truth+"EncSensor.txt");
+  if (fin_odom.fail()) {
     fin_odom.open(str_old_truth+"odometrysensor.txt");
-  else
-    fin_odom.open(str_old_truth+"EncSensor.txt");
+    estimate_mode = 0;
+  }
   ofstream fout_odomtraj(str_old_truth+"CrystalTrajectoryFromOdom.txt");
   fout_odomtraj<<fixed<<"# estimated trajectory of the crystal from odometry\n# timestamp tx ty tz qx qy qz qw\n";
   for (int i=0;i<3;++i)

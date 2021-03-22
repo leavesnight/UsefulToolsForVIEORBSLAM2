@@ -15,9 +15,9 @@ IF(NOT MSVC)
   endif()
 endif()
 
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "/home/leavesnight/zzh/g2ofork/cmake_modules/")
-find_package(G2O REQUIRED)
-include_directories(SYSTEM ${G2O_INCLUDE_DIR} ${G2O_INCLUDE_DIRS})
+#set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "/home/leavesnight/zzh/g2o/cmake_modules/")
+#find_package(G2O REQUIRED)
+#include_directories(SYSTEM ${G2O_INCLUDE_DIR} ${G2O_INCLUDE_DIRS})
 
 set(OpenCV_DIR "/usr/local/opencv320/share/OpenCV") 
 find_package(OpenCV 3.0 QUIET)
