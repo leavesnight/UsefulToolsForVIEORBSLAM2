@@ -113,6 +113,8 @@ int main(int argc,char** argv)
   }
   path_old_truth = str_old_truth + "oldtruth4.txt";
   //test the length of the TUM dataset && we cannot estimate the trajectory from the 3 kinds of acceleration and we need the angle at least!
+//#define estimate_mode 0//0 means Complementary Filter(for old VI), 1 means KF, 2means only encoder(for VIE dataset)
+  int estimate_mode=2;
   if (argc>=3){
     if ((string(argv[2])=="TUM"||string(argv[2])=="TUM2D")){
       int constzy=0;
@@ -315,6 +317,9 @@ int main(int argc,char** argv)
       return 0;
     }else {
         path_old_truth = str_old_truth + argv[2];
+	if (argc > 3) {
+            estimate_mode = atoi(argv[3]);
+        }
     }
   }
   ifstream fin_old_truth(path_old_truth, ios_base::in);
@@ -467,8 +472,6 @@ labeljump2:
   
   //calculate the pose from the encoder/hall sensor data
   //this world frame is rotaionally different from the one before,but still called the cr frame at the time 0
-//#define estimate_mode 0//0 means Complementary Filter(for old VI), 1 means KF, 2means only encoder(for VIE dataset)
-  int estimate_mode=2;
   const int ppr=400,datatime=10;//pulse per revolution,the span of the hall sensor data
   const double wheelradius=0.105,carradius=0.280,vscaleforhall=1.649336143e-4;//2.0/ppr*M_PI*wheelradius/datatime;//radius for the driving wheels(m),the half distance between two driving wheels
   const double wscaleforhall=vscaleforhall/carradius;
