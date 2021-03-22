@@ -480,7 +480,6 @@ labeljump2:
   fin_odom.open(str_old_truth+"EncSensor.txt");
   if (fin_odom.fail()) {
     fin_odom.open(str_old_truth+"odometrysensor.txt");
-    estimate_mode = 0;
   }
   ofstream fout_odomtraj(str_old_truth+"CrystalTrajectoryFromOdom.txt");
   fout_odomtraj<<fixed<<"# estimated trajectory of the crystal from odometry\n# timestamp tx ty tz qx qy qz qw\n";
