@@ -61,7 +61,7 @@ int main(int argc,char** argv)
   double dtimetmp,x,y,z,qx,qy,qz,qw,arrq[4];
   vector<double> reversedtmp;
   if (argc<2){
-    cout<<"usage: ./test (directory of zzh's dataset) (2:EuRoC 3:leica/vicon / 2:TUM / 2:TUM2D / 2:zzh's dataset oldtruth.txt name, e.g. oldtruth4.txt)"<<endl;
+    cout<<"usage: ./test (directory of zzh's dataset) (2:EuRoC 3:leica/vicon / 2:TUM / 2:TUM2D / 2:zzh's dataset oldtruth.txt name + 3: zzh's dataset year(2018 for 15_200Hz, 2017 for 7_15Hz), e.g. oldtruth4.txt)"<<endl;
     
     cout<<"Calculate Stereo's rectified Rc'cl(R1),Rc'cr(R2),Pclc'(P1),Pcrc'(P2) & Tbc(Tbc') used by VIO:"<<endl;
     cv::Mat Tbc1(4,4,CV_64F),Tbc2(4,4,CV_64F);
@@ -112,6 +112,7 @@ int main(int argc,char** argv)
     cout<<"rectified directory name: "<<str_old_truth<<endl;
   }
   path_old_truth = str_old_truth + "oldtruth4.txt";
+  tmtmp.tm_year=2018-1900;//2017(for old VI dataset)
   //test the length of the TUM dataset && we cannot estimate the trajectory from the 3 kinds of acceleration and we need the angle at least!
 //#define estimate_mode 0//0 means Complementary Filter(for old VI), 1 means KF, 2means only encoder(for VIE dataset)
   int estimate_mode=2;
@@ -318,7 +319,9 @@ int main(int argc,char** argv)
     }else {
         path_old_truth = str_old_truth + argv[2];
 	if (argc > 3) {
-            estimate_mode = atoi(argv[3]);
+            tmtmp.tm_year=atoi(argv[3])-1900;//2017(for old VI dataset)
+	    if (argc > 4)
+                estimate_mode = atoi(argv[3]);
         }
     }
   }
@@ -332,7 +335,6 @@ int main(int argc,char** argv)
   }
   fout_truth.open(str_old_truth+"groundtruth.txt",ios_base::out);
   fout_truth<<"# ground truth trajectory\n# file: 'rgbd_dataset_zzh.bag'\n# timestamp tx ty tz qx qy qz qw\n";
-  tmtmp.tm_year=2018-1900;//2017(for old VI dataset)
   cout<<fixed<<setprecision(4);
   fout_truth<<fixed<<setprecision(4);
   while (!fin_old_truth.eof()){
@@ -343,7 +345,7 @@ int main(int argc,char** argv)
     strtmp=strtmp.substr(4);//delete 0471
     sscanf(strtmp.substr(0,12).c_str(),"%02d%02d%02d%02d%02d%02d",arrtmp,arrtmp+1,arrtmp+2,arrtmp+3,arrtmp+4,arrtmp+5);
     tmtmp.tm_mon=arrtmp[0]-1;tmtmp.tm_mday=arrtmp[1]+1;tmtmp.tm_hour=arrtmp[2]-1;tmtmp.tm_min=arrtmp[3];tmtmp.tm_sec=arrtmp[4];//+1 day
-    dtimetmp=mktime(&tmtmp)+4+arrtmp[5]/100.0;//42(for old VI dataset)
+    dtimetmp=mktime(&tmtmp) + arrtmp[5]/100.0 + (tmtmp.tm_year == 2017 - 1900 ? 42 : 4);//42(for old VI dataset)
     //cout<<dtimetmp<<" "<<endl;
     strtmp=strtmp.substr(13);
     //cout<<strtmp<<" ";
