@@ -44,8 +44,8 @@ void printusage() {
           "topic name> <num of IMU data:13/7/6> <scale_acc> <scale_gyro> "
           "<scale_time>) <path to imu1 file>..."
           "(<path to image0 directory> <image0 extension e.g. bmp> <image0 "
-          "topic name> <image0 channels num> (<path to depth/image1 "
-          "directory>...)"
+          "topic name> <image0 channels num> [{id_mode&4:} <> else <num "
+          "divided>] (<path to depth/image1 directory>...)"
        << endl;
   cerr << "<number of IMU data> doesn't include timestamp(default 0th data):"
           " 13 means qw qx qy qz mx my mz ax ay az gx gy gz>; 6 means ax ay az "
@@ -56,6 +56,8 @@ void printusage() {
   cerr << "<imagei channels num>: 3 means Color, 1 means Depth" << endl;
   cerr << "Current version unsupported imu output to a file from input bag"
        << endl;
+  cerr << "<num divided> means the number of images with same width shared in "
+          "one image, standard is 1";
 }
 
 int main(int argc, char **argv) {
@@ -123,6 +125,7 @@ int main(int argc, char **argv) {
   int num_params_left = argc - pos;
   int i = 0;
   vector<string> topics_image;
+  vector<size_t> vnum_divided;
   while (num_params_left > 0) {
     foldernames_image.push_back(argv[pos]);
     exts_image.push_back(argv[pos + 1]);
@@ -133,6 +136,12 @@ int main(int argc, char **argv) {
     topics_image.push_back(argv[pos + 2]);
     cout << " Topic: " << topics_image.back() << endl;
     nums_channels.push_back(atoi(argv[pos + 3]));
+    if (!(id_mode & MODE_IN_IMAGES_BAG)) {
+      vnum_divided.push_back(atoi(argv[pos + 4]));
+      cout << " Divided Num: " << vnum_divided.back() << endl;
+      ++pos;
+      --num_params_left;
+    }
     pos += SIZE_IMAGE_FOLDER_INFO;
     num_params_left -= SIZE_IMAGE_FOLDER_INFO;
     ++i;
@@ -176,31 +185,39 @@ int main(int argc, char **argv) {
     // write depth/color images to rosbag::Bag
     for (size_t j = 0; j < filenames_images.size(); ++j) {
       t = t_old;
-      for (size_t i = 0; i < filenames_images[j].size(); i++) {
+      for (size_t i = 0; i < filenames_images[j].size(); ++i) {
         if (!ros::ok())
           break;
 
         string &filename = filenames_images[j][i];
-        cv_bridge::CvImage cvImage;
-        cv::Mat im;
-        if (1 == nums_channels[j]) {
-          im = cv::imread(filename, cv::IMREAD_UNCHANGED);
-          cvImage.encoding = sensor_msgs::image_encodings::TYPE_16UC1;
-        } else {
-          im = cv::imread(filename, cv::IMREAD_COLOR);
-          cvImage.encoding = sensor_msgs::image_encodings::RGB8;
+        for (size_t k = 0; k < vnum_divided[j]; ++k) {
+          cv_bridge::CvImage cvImage;
+          cv::Mat im;
+          if (1 == nums_channels[j]) {
+            im = cv::imread(filename, cv::IMREAD_UNCHANGED);
+            im = im.colRange(im.cols / vnum_divided[j] * k,
+                             im.cols / vnum_divided[j] * (k + 1));
+            cvImage.encoding = sensor_msgs::image_encodings::TYPE_16UC1;
+          } else {
+            im = cv::imread(filename, cv::IMREAD_COLOR);
+            im = im.colRange(im.cols / vnum_divided[j] * k,
+                             im.cols / vnum_divided[j] * (k + 1));
+            cvImage.encoding = sensor_msgs::image_encodings::RGB8;
+          }
+          if (!(id_mode & MODE_FREQUENCY)) {
+            int pos = filename.rfind('/') + 1;
+            t = ros::Time(
+                scale_tm *
+                atof(filename.substr(pos, filename.rfind(exts_image[j]) - pos)
+                         .c_str()));
+          }
+          cvImage.image = im;
+          cvImage.header.stamp = t;
+          // e.g. "/camera/image_raw" "/cam0/rgb/image"
+          bag_out.write(topics_image[j] +
+                            (vnum_divided[j] > 1 ? to_string(k) : ""),
+                        ros::Time(t), cvImage.toImageMsg());
         }
-        if (!(id_mode & MODE_FREQUENCY)) {
-          int pos = filename.rfind('/') + 1;
-          t = ros::Time(
-              scale_tm *
-              atof(filename.substr(pos, filename.rfind(exts_image[j]) - pos)
-                       .c_str()));
-        }
-        cvImage.image = im;
-        cvImage.header.stamp = t;
-        // e.g. "/camera/image_raw" "/cam0/rgb/image"
-        bag_out.write(topics_image[j], ros::Time(t), cvImage.toImageMsg());
         t += d;
         if (!(i % (int)freq) || i == filenames_images[j].size() - 1)
           cout << i + 1 << " / " << filenames_images[j].size() << " ";
