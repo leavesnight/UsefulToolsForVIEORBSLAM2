@@ -302,6 +302,9 @@ int main(int argc, char **argv) {
   // make a standard groundtruth file from a original one
   string str_old_truth, path_old_truth;
   struct tm tmtmp;
+  tmtmp.tm_isdst = 0;  // must assigned to avoid it's random! 0:DST not effetct, standard time
+  tmtmp.tm_gmtoff = 0;
+  tmtmp.tm_zone = nullptr;
   double dtimetmp, x, y, z, qx, qy, qz, qw, arrq[4];
   vector<double> reversedtmp;
   if (argc < 2) {
