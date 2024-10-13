@@ -19,8 +19,8 @@ endif()
 #find_package(G2O REQUIRED)
 #include_directories(SYSTEM ${G2O_INCLUDE_DIR} ${G2O_INCLUDE_DIRS})
 
-set(OpenCV_DIR "/usr/local/opencv320/share/OpenCV") 
-find_package(OpenCV 3.0 QUIET)
+#set(OpenCV_DIR "/usr/local/opencv320/share/OpenCV")
+find_package(OpenCV 4.5 REQUIRED)
 
 message("${OpenCV_INCLUDE_DIRS}\n${OpenCV_LIBS}")
 #here include_directories can be omitted for already used target_link_libraries and find_package!
