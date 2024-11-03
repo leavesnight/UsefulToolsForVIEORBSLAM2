@@ -131,11 +131,11 @@ int MakeTrajTUMFormat(const string &str_old_truth, const string &mode, string me
         else {
           fout_truth << " ";
         }
-        if (lineNum == 0) {
-          xyzLast[i - 1] = dtmp;
-        } else if (i > 0 && i < 4) {  // x,y,z
-          double del = dtmp - xyzLast[i - 1];
-          len2 += del * del;  // delx^2+dely^2+delz^2
+        if (i > 0 && i < 4) {  // x,y,z
+          if (0 < lineNum) {
+            double del = dtmp - xyzLast[i - 1];
+            len2 += del * del;  // delx^2+dely^2+delz^2
+          }
           xyzLast[i - 1] = dtmp;
         }
       }
@@ -188,11 +188,11 @@ int MakeTrajTUMFormat(const string &str_old_truth, const string &mode, string me
           fout_truth << setprecision(17) << dtmp
                      << " ";  // input time,x,y,z,qw,qx,qy,qz but we want output as time,x,y,z,qx,qy,qz,qw
         if (i == NUM_PER_LINE - 1) fout_truth << qwTmp << endl;
-        if (lineNum == 0) {
-          xyzLast[i - 1] = dtmp;
-        } else if (i > 0 && i < 4) {  // x,y,z
-          double del = dtmp - xyzLast[i - 1];
-          len2 += del * del;  // delx^2+dely^2+delz^2
+        if (i > 0 && i < 4) {  // x,y,z
+          if (0 < lineNum) {
+            double del = dtmp - xyzLast[i - 1];
+            len2 += del * del;  // delx^2+dely^2+delz^2
+          }
           xyzLast[i - 1] = dtmp;
         }
       }
