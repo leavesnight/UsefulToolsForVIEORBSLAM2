@@ -23,8 +23,7 @@ build/
 lib/
 
 #added by zzh
-cmake-build-debug/
-cmake-build-release/
+cmake-build-*/
 .idea/
 build2/
 #Vocabulary/ORBvoc.bin

@@ -74,7 +74,8 @@ void GetTrajTUMFormatEstLen(const string &str_old_truth, const string &mode) {
   cout << "estimate " << gettotallength(str_old_truth + "CrystalTrajectoryFromOdom.txt", 2, constzy) << endl;
 }
 
-int MakeTrajTUMFormat(const string &str_old_truth, const string &mode, string method_truth, bool noTwbFromTwc) {
+int MakeTrajTUMFormat(const string &str_old_truth, const string &mode, string method_truth, bool use_better_leica_gt,
+                      bool noTwbFromTwc) {
   // Make groundtruth_estimate0.txt
   string str_old_truth_file = str_old_truth + "/mav0/state_groundtruth_estimate0/data.csv";
   string str_new_truth_file = str_old_truth + "/groundtruth_estimate0.txt";
@@ -100,6 +101,11 @@ int MakeTrajTUMFormat(const string &str_old_truth, const string &mode, string me
   fout_truth << fixed;
   int NUM_Q_OVER = 8;  // 1+3+4
   int ntmp;
+//#define USE_VIEOS2_PAPER_ROUGH_GROUNDTRUTH
+#ifndef USE_VIEOS2_PAPER_ROUGH_GROUNDTRUTH
+  map<double, Eigen::Quaterniond> map_gt_rot;
+  double last_map_gt_rot_ftm = -1;
+#endif
   while (!fin_old_truth.eof()) {
     fin_old_truth >> strtmp;
     ntmp = strtmp.length();
@@ -139,6 +145,18 @@ int MakeTrajTUMFormat(const string &str_old_truth, const string &mode, string me
           xyzLast[i - 1] = dtmp;
         }
       }
+#ifndef USE_VIEOS2_PAPER_ROUGH_GROUNDTRUTH
+      {
+        if (i == 0) {
+          last_map_gt_rot_ftm = dtmp / 1e9;
+          map_gt_rot.emplace(last_map_gt_rot_ftm, Eigen::Quaterniond());
+        } else if (i == 4) {
+          map_gt_rot[last_map_gt_rot_ftm].coeffs().w() = dtmp;
+        } else if (i > 4 && i <= NUM_Q_OVER - 1) {
+          map_gt_rot[last_map_gt_rot_ftm].coeffs()[i - 5] = dtmp;
+        }
+      }
+#endif
       posLast = pos + 1;
     }
     total_length += sqrt(len2);
@@ -163,6 +181,33 @@ int MakeTrajTUMFormat(const string &str_old_truth, const string &mode, string me
   fout_truth << "# ground truth trajectory\n# file: 'rgbd_dataset_zzh.bag'\n# timestamp tx ty tz qx qy qz qw\n";
   fout_truth << fixed;
   NUM_PER_LINE = 8;  // total 1+3+4 numbers per line
+#ifndef USE_VIEOS2_PAPER_ROUGH_GROUNDTRUTH
+  Eigen::Quaterniond gt_rot_tmp;
+  // ftm_tmp_offset is a delay time of groundtruth input from real groundtruth / groundtruth_estimate0
+  double ftm_tmp_offset = 0.;
+  if (use_better_leica_gt) {
+    cout << "Use better leica gt" << endl;
+    if (string::npos != str_old_truth.rfind("MH0")) {
+      cout << "MH0XXX series, offset=0.2" << endl;
+      ftm_tmp_offset = 0.2;
+    } else if (string::npos != str_old_truth.rfind("V20")) {
+      cout << "V20XXX series, offset=-0.2" << endl;
+      ftm_tmp_offset = -0.2;
+    }
+  }
+#endif
+  Eigen::Isometry3d Tbp;
+  cout << str_old_truth + "/mav0/" + truthmethod + "/sensor.yaml" << endl;
+  cv::FileStorage fsSettings(str_old_truth + "/mav0/" + truthmethod + "/sensor.yaml", cv::FileStorage::READ);
+  if (!fsSettings.isOpened()) cout << "Wrong in openning" << truthmethod << "/sensor.yaml!!!" << endl;
+  cv::FileNode fnT = fsSettings["T_BS"];
+  if (fnT.empty())
+    cout << "Empty Node!" << endl;
+  else {
+    for (int i = 0; i < 4; ++i)
+      for (int j = 0; j < 4; ++j) Tbp.matrix()(i, j) = fnT["data"][i * 4 + j];
+    // cout<<Tbp.matrix()<<endl;
+  }
   while (!fin_old_truth.eof()) {
     fin_old_truth >> strtmp;
     ntmp = strtmp.length();
@@ -184,9 +229,10 @@ int MakeTrajTUMFormat(const string &str_old_truth, const string &mode, string me
       else {
         if (i == 0)
           fout_truth << setprecision(9) << dtmp / 1e9 << " ";
-        else
-          fout_truth << setprecision(17) << dtmp
-                     << " ";  // input time,x,y,z,qw,qx,qy,qz but we want output as time,x,y,z,qx,qy,qz,qw
+        else {
+          // input time,x,y,z,qw,qx,qy,qz but we want output as time,x,y,z,qx,qy,qz,qw
+          fout_truth << setprecision(17) << dtmp << " ";
+        }
         if (i == NUM_PER_LINE - 1) fout_truth << qwTmp << endl;
         if (i > 0 && i < 4) {  // x,y,z
           if (0 < lineNum) {
@@ -197,8 +243,40 @@ int MakeTrajTUMFormat(const string &str_old_truth, const string &mode, string me
         }
       }
       posLast = pos + 1;
+#ifndef USE_VIEOS2_PAPER_ROUGH_GROUNDTRUTH
+      if (i == 0) last_map_gt_rot_ftm = dtmp / 1e9;
+#endif
       if (truthmethod == "leica0" && i == 3) {  // for leica0
-        fout_truth << "0 0 0 1" << endl;
+#ifndef USE_VIEOS2_PAPER_ROUGH_GROUNDTRUTH
+        if (use_better_leica_gt) {
+          double ftm_tmp = last_map_gt_rot_ftm + ftm_tmp_offset;
+          auto iter_lowerbound = map_gt_rot.lower_bound(ftm_tmp), iter_less = iter_lowerbound;
+          if (iter_less != map_gt_rot.begin())
+            --iter_less;
+          else
+            iter_less = map_gt_rot.end();
+          if (iter_less == map_gt_rot.end() && iter_lowerbound == map_gt_rot.end()) {
+          } else if (iter_less == map_gt_rot.end()) {
+            gt_rot_tmp = iter_lowerbound->second;
+          } else {
+            gt_rot_tmp = iter_less->second;
+            if (iter_lowerbound != map_gt_rot.end()) {
+              // cout << "check ftm=" << fixed << setprecision(9) << last_map_gt_rot_ftm << ",less=" << iter_less->first
+              //     << ",lb=" << iter_lowerbound->first << endl;
+              double alpha = (ftm_tmp - iter_less->first) / (iter_lowerbound->first - iter_less->first);
+              gt_rot_tmp = gt_rot_tmp.slerp(alpha, iter_lowerbound->second);
+            }
+          }
+          gt_rot_tmp = gt_rot_tmp * Tbp.rotation();
+
+          fout_truth << gt_rot_tmp.x() << " " << gt_rot_tmp.y() << " " << gt_rot_tmp.z() << " " << gt_rot_tmp.w()
+                     << endl;
+        } else
+#endif
+        {
+          fout_truth << "0 0 0 1" << endl;
+        }
+
         break;
       }
     }
@@ -208,27 +286,17 @@ int MakeTrajTUMFormat(const string &str_old_truth, const string &mode, string me
   fin_old_truth.close();
   fout_truth.close();
   cout << "new groundtruth_" << truthmethod << ".txt is made! && the total length is: " << total_length << endl;
+
   // Make a true Twb from Twp using Tbp, p means prism, b means IMU
   fin_old_truth.open(str_old_truth + "/groundtruth_" + truthmethod + ".txt", ios_base::in);
   total_length = 0;
   fout_truth.open(str_old_truth + "/groundtruth.txt", ios_base::out);
   double dtmp;
-  Eigen::Isometry3d Tpb;
-  cout << str_old_truth + "/mav0/" + truthmethod + "/sensor.yaml" << endl;
-  cv::FileStorage fsSettings(str_old_truth + "/mav0/" + truthmethod + "/sensor.yaml", cv::FileStorage::READ);
-  if (!fsSettings.isOpened()) cout << "Wrong in openning" << truthmethod << "/sensor.yaml!!!" << endl;
-  cv::FileNode fnT = fsSettings["T_BS"];
-  if (fnT.empty())
-    cout << "Empty Node!" << endl;
-  else {
-    for (int i = 0; i < 4; ++i)
-      for (int j = 0; j < 4; ++j) Tpb.matrix()(i, j) = fnT["data"][i * 4 + j];
-    // cout<<Tbc.matrix()<<endl;
-  }
-  Tpb = Tpb.inverse();
+  Eigen::Isometry3d Tpb = Tbp.inverse();
   getline(fin_old_truth, strtmp);  // pass 3 unused lines #...
   getline(fin_old_truth, strtmp);
   getline(fin_old_truth, strtmp);
+  Eigen::Vector3d last_twb_tmp = Eigen::Vector3d(NAN, NAN, NAN);
   while (!fin_old_truth.eof()) {
     fin_old_truth >> dtmp;
     fout_truth << setprecision(6) << dtmp << " ";
@@ -244,14 +312,72 @@ int MakeTrajTUMFormat(const string &str_old_truth, const string &mode, string me
     Eigen::Quaterniond qout(Twb.rotation());
     if (qout.w() < 0) qout.coeffs() *= -1;
     fout_truth << setprecision(7) << Twb(0, 3) << " " << Twb(1, 3) << " " << Twb(2, 3);
-    if (truthmethod == "leica0")
+    if (!use_better_leica_gt && truthmethod == "leica0")
       fout_truth << " 0 0 0 1" << endl;
     else
       fout_truth << " " << qout.x() << " " << qout.y() << " " << qout.z() << " " << qout.w() << endl;
+
+    {
+      if (!last_twb_tmp.hasNaN()) {
+        total_length += (Twb.translation() - last_twb_tmp).norm();  // delx^2+dely^2+delz^2
+      }
+      last_twb_tmp = Twb.translation();
+    }
   }
   fin_old_truth.close();
   fout_truth.close();
   cout << "new groundtruth.txt is made! && the total length is: " << total_length << endl;
+
+#ifndef USE_VIEOS2_PAPER_ROUGH_GROUNDTRUTH
+  // Make trajectory Twp from Twc
+  if (use_better_leica_gt) {
+    Eigen::Isometry3d Tbc;
+    fsSettings.open(str_old_truth + "/mav0/cam0/sensor.yaml", cv::FileStorage::READ);
+    if (!fsSettings.isOpened()) cout << "Wrong!!!" << endl;
+    fnT = fsSettings["T_BS"];
+    if (fnT.empty())
+      cout << "Empty Node!" << endl;
+    else {
+      for (int i = 0; i < 4; ++i)
+        for (int j = 0; j < 4; ++j) Tbc.matrix()(i, j) = fnT["data"][i * 4 + j];
+    }
+    Eigen::Isometry3d Tcp;
+    Tcp = (Tpb * Tbc).inverse();
+    vector<string> trajs_vieo = {"CameraTrajectory.txt", "CameraTrajectory_NO_FULLBA.txt", "KeyFrameTrajectory.txt",
+                                 "KeyFrameTrajectory_NO_FULLBA.txt"};
+    for (int i = 0; i < 4; ++i) {
+      ifstream fin_traj(str_old_truth + "/vieo_slam/" + trajs_vieo[i], ios_base::in);
+      if (fin_traj.is_open()) {
+        string fout_strtmp = str_old_truth + "/vieo_slam/" + trajs_vieo[i].substr(0, trajs_vieo[i].rfind(".txt")) +
+                             "_" + truthmethod + ".txt";
+        ofstream fout_traj(fout_strtmp, ios_base::out);
+        fout_traj << fixed;
+        while (!fin_traj.eof()) {
+          fin_traj >> dtmp;
+          fout_traj << setprecision(6) << dtmp << " ";
+          // fout_traj << setprecision(6) << dtmp / 1e9 << " ";  // for ORB_SLAM3
+          double x, y, z, qx, qy, qz, qw;
+          fin_traj >> x >> y >> z >> qx >> qy >> qz >> qw;
+          getline(fin_traj, strtmp);  // maybe recording pseudo velocity&bg,ba
+          Eigen::Quaterniond q(qw, qx, qy, qz);
+          Eigen::Vector3d t(x, y, z);
+          Eigen::Isometry3d Twc(q);
+          Twc.matrix().block<3, 1>(0, 3) = t;
+          Eigen::Isometry3d Twp;
+          Twp = Twc * Tcp;
+          Eigen::Quaterniond qout(Twp.rotation());
+          if (qout.w() < 0) qout.coeffs() *= -1;
+          fout_traj << setprecision(7) << Twp(0, 3) << " " << Twp(1, 3) << " " << Twp(2, 3) << " " << qout.x() << " "
+                    << qout.y() << " " << qout.z() << " " << qout.w() << endl;
+        }
+        fin_traj.close();
+        fout_traj.close();
+        cout << "New " + fout_strtmp + " made from " << trajs_vieo[i] << endl;
+      }
+    }
+  }
+#endif
+
   if (noTwbFromTwc) return 0;
 
   // Make trajectory Twb from Twc
@@ -272,8 +398,8 @@ int MakeTrajTUMFormat(const string &str_old_truth, const string &mode, string me
     fout_traj << fixed;
     while (!fin_traj.eof()) {
       fin_traj >> dtmp;
-      //          fout_traj<<setprecision(6)<<dtmp<<" ";
-      fout_traj << setprecision(6) << dtmp / 1e9 << " ";  // for ORB_SLAM3
+      fout_traj << setprecision(6) << dtmp << " ";
+      // fout_traj << setprecision(6) << dtmp / 1e9 << " ";  // for ORB_SLAM3
       double x, y, z, qx, qy, qz, qw;
       fin_traj >> x >> y >> z >> qx >> qy >> qz >> qw;
       getline(fin_traj, strtmp);  // maybe recording pseudo velocity&bg,ba
@@ -282,9 +408,8 @@ int MakeTrajTUMFormat(const string &str_old_truth, const string &mode, string me
       Eigen::Isometry3d Twc(q);
       Twc.matrix().block<3, 1>(0, 3) = t;
       Eigen::Isometry3d Twb;
-      //          Twb=Twc*Tcb;
-      Twb = Twc;
-      // cout<<Tbp.matrix()<<endl;
+      Twb = Twc * Tcb;
+      // Twb = Twc;  // for ORB_SLAM3
       Eigen::Quaterniond qout(Twb.rotation());
       if (qout.w() < 0) qout.coeffs() *= -1;
       fout_traj << setprecision(7) << Twb(0, 3) << " " << Twb(1, 3) << " " << Twb(2, 3) << " " << qout.x() << " "
@@ -308,10 +433,12 @@ int main(int argc, char **argv) {
   double dtimetmp, x, y, z, qx, qy, qz, qw, arrq[4];
   vector<double> reversedtmp;
   if (argc < 2) {
-    cout << "usage: ./test (directory of dataset) EuRoC/EuRoC_TUM leica/vicon\n"
-            "./test (directory of dataset) TUM\n"
-            "./test (directory of dataset) TUM2D\n"
-            "./test (directory of dataset) {zzh's dataset oldtruth.txt name,e.g. oldtruth4.txt} {zzh's dataset "
+    cout << "usage: ./test {directory of dataset, non dataset name path cannot contain \"MH0 or V20\"} EuRoC/EuRoC_TUM "
+            "leica/vicon ({use better leica groundtruth: 0 means use VIEOS2 paper rough groundtruth without "
+            "Rw_prima_truth, 1 means use better gt whose Rw_prima_truth is from Rw_b_estimate0}) \n"
+            "./test {directory of dataset} TUM\n"
+            "./test {directory of dataset} TUM2D\n"
+            "./test {directory of dataset} {zzh's dataset oldtruth.txt name,e.g. oldtruth4.txt} {zzh's dataset "
             "year(2018 for 15_200Hz, 2017 for 7_15Hz)} {estimate_mode:0 means Complementary Filter(for old VI), 1 "
             "means KF, 2means only encoder(for VIE dataset)}"
          << endl;
@@ -382,7 +509,11 @@ int main(int argc, char **argv) {
       GetTrajTUMFormatEstLen(str_old_truth, mode);
       return 0;
     } else if (mode.substr(0, strlen("EuRoC")) == "EuRoC") {
-      int ret = MakeTrajTUMFormat(str_old_truth, mode, argc >= 4 ? string(argv[3]) : "", true);
+      bool use_better_leica_gt = false;
+      if (argc > 4) {
+        use_better_leica_gt = (bool)atoi(argv[4]);
+      }
+      int ret = MakeTrajTUMFormat(str_old_truth, mode, argc >= 4 ? string(argv[3]) : "", use_better_leica_gt, true);
       return ret;
     } else {
       path_old_truth = str_old_truth + argv[2];
